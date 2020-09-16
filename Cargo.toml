@@ -1,0 +1,18 @@
+[workspace]
+members = [
+    "cst-error",
+    "cst-intern",
+    "cst-fmt",
+    "cst-source",
+    "cst-syntax",
+]
+
+[package]
+name = "celeste"
+version = "0.1.0"
+authors = ["brunoczim <brunoczim@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
