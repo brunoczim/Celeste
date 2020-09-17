@@ -6,11 +6,13 @@ open import Data.Nat using (ℕ ; suc; zero; ⌊_/2⌋)
 open import Data.Fin using (Fin; suc; zero; raise)
                      renaming (toℕ to finToℕ; fromℕ to finFromℕ)
 open import Data.Product using (_×_; _,_; proj₁; proj₂)
-open import Data.Vec using (Vec; []; _∷_; _++_; map; replicate; insert)
+open import Data.Vec using (Vec; []; _∷_; _++_; replicate; insert)
+                     renaming (map to mapVec)
 open import Data.Unit using (⊤)
 open import Data.Empty using (⊥)
 open import Level using (_⊔_)
 open import Data.Bool using (Bool; false; true)
+open import Data.Maybe using (Maybe; just; nothing; map)
 
 record WithCarry {a} {c} (A : Set a) (C : Set c) : Set (a ⊔ c) where
   constructor _with-carry:_
@@ -86,7 +88,7 @@ full-addₙ (p ∷ ps) (q ∷ qs) r = result s ∷ result ss with-carry: carry s
   ss = full-addₙ ps qs (carry s)
 
 !ₙ : {n : ℕ} → Vec Bit n → Vec Bit n
-!ₙ = map !
+!ₙ = mapVec !
 
 _+_ : {n : ℕ} → Vec Bit n → Vec Bit n → WithCarry (Vec Bit n) (Vec Bit 2)
 ps + qs = full-addₙ ps qs b0
@@ -109,7 +111,7 @@ _>>_ {suc m} (p ∷ ps) (suc i) = new-result with-carry: new-carry
     new-result : Vec Bit (suc m)
     new-result = insert (result qs) (finFromℕ m) b0
     new-carry : Vec Bit (suc m)
-    new-carry = insert (result qs) (finFromℕ m) p
+    new-carry = insert (carry qs) (finFromℕ m) p
 
 _<<_ : {m : ℕ} → Vec Bit m → Fin m → WithCarry (Vec Bit m) (Vec Bit m)
 _<<_ {m} ps i = proj₂ (do-shift ps) where
@@ -124,6 +126,26 @@ _<<_ {m} ps i = proj₂ (do-shift ps) where
     ret zero = zero , (b0 ∷ result qs with-carry: p ∷ carry qs)
     ret (suc j) = raise 1 j , (p ∷ result qs with-carry: b0 ∷ carry qs)
 
+_>>>_ : {m : ℕ} → Vec Bit m → Fin m → WithCarry (Vec Bit m) (Vec Bit m)
+ps >>> zero = ps with-carry: replicate b0
+_>>>_ {suc m} (p ∷ ps) (suc i) = new-result with-carry: new-carry where
+  qs : WithCarry (Vec Bit m) (Vec Bit m)
+  qs = ps >> i
+  new-result : Vec Bit (suc m)
+  new-result = insert (result qs) (finFromℕ m) p
+  new-carry : Vec Bit (suc m)
+  new-carry = b0 ∷ carry qs 
+
+_<<<_ : {m : ℕ} → Vec Bit m → Fin m → WithCarry (Vec Bit m) (Vec Bit m)
+ps <<< zero = ps with-carry: replicate b0
+_<<<_ {suc m} (p ∷ ps) (suc i) = new-result with-carry: new-carry where
+  qs : WithCarry (Vec Bit m) (Vec Bit m)
+  qs = ps << i
+  new-result : Vec Bit (suc m)
+  new-result = p ∷ result qs
+  new-carry : Vec Bit (suc m)
+  new-carry = insert (result qs) (finFromℕ m) b0
+
 _&_ : {n : ℕ} → Vec Bit n → Vec Bit n → Vec Bit n
 [] & [] = []
 (p ∷ ps) & (q ∷ qs) = p ∧ q ∷ ps & qs
@@ -136,6 +158,9 @@ _^_ : {n : ℕ} → Vec Bit n → Vec Bit n → Vec Bit n
 [] ^ [] = []
 (p ∷ ps) ^ (q ∷ qs) = (p ⊕ q) ∷ (ps ^ qs)
 
+~ : {n : ℕ} → Vec Bit n → WithCarry (Vec Bit n) (Vec Bit 2)
+~ n = inc (!ₙ n)
+
 toℕ : Bit → ℕ
 toℕ b0 = 0
 toℕ b1 = 1
@@ -147,6 +172,13 @@ toFin b1 = 1
 toℕₙ : {n : ℕ} → Vec Bit n → ℕ
 toℕₙ [] = 0
 toℕₙ (p ∷ ps) = ℕ+ (toℕ p) (ℕ* 2 (toℕₙ ps))
+
+tryToFinₙ : {m n : ℕ} → Vec Bit m → Maybe (Fin n)
+tryToFinₙ {_} {n} ps = tryℕ n (toℕₙ ps) where
+  tryℕ : (k : ℕ) → ℕ → Maybe (Fin k)
+  tryℕ zero _ = nothing
+  tryℕ (suc _) zero = just zero
+  tryℕ (suc m) (suc n) = map suc (tryℕ m n)
 
 ℕ-mod2 : ℕ → Bit
 ℕ-mod2 zero = b0
