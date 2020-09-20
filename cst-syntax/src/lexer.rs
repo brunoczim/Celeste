@@ -2,12 +2,38 @@
 mod test;
 
 use crate::{
-    error::{AmbiguousToken, BadChar},
+    error::{
+        AmbiguousToken,
+        BadChar,
+        EmptyExponent,
+        EmptyFrac,
+        ExponentTooBig,
+        ExponentTooSmall,
+    },
     token::{Token, TokenKind},
 };
 use cst_error::Emitter;
 use cst_source::{Reader, Src};
-use num::{BigInt, BigRational, One, Zero};
+use num::{BigInt, BigRational, Signed, ToPrimitive, Zero};
+
+#[derive(Debug, Clone, Copy)]
+struct Base {
+    digits: u8,
+    exp_del: &'static str,
+    min_exp: i32,
+    max_exp: i32,
+}
+
+impl Base {
+    const B16: Base =
+        Base { digits: 16, exp_del: "p", max_exp: 255, min_exp: -268 };
+    const B10: Base =
+        Base { digits: 10, exp_del: "e", max_exp: 307, min_exp: -323 };
+    const B8: Base =
+        Base { digits: 8, exp_del: "e", max_exp: 341, min_exp: -358 };
+    const B2: Base =
+        Base { digits: 2, exp_del: "e", max_exp: 1023, min_exp: -1074 };
+}
 
 #[derive(Debug)]
 pub struct Lexer<'emitter, 'diagnostics> {
@@ -86,6 +112,7 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
     fn try_read_next(&mut self) -> bool {
         self.read_discardable();
         let read = self.read_eof()
+            || self.read_number()
             || self.read_ident_like()
             || self.read_operator_like()
             || self.read_open_paren()
@@ -294,16 +321,26 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
         self.reader.mark();
         let negative = self.read_negative();
         let maybe_base = self.read_base();
-        let base = maybe_base.unwrap_or(10);
+        let base = maybe_base.unwrap_or(Base::B10);
         match self.read_int_part(negative, base) {
-            Some(mut int) => {
-                if self.reader.curr() == Some(".") {
+            Some(int) => {
+                if self.reader.curr() == Some(".")
+                    || self.reader.curr() == Some(base.exp_del)
+                {
                     self.read_float(base, int)
                 } else {
                     self.read_int(int)
                 }
             },
-            None => negative && maybe_base.is_none() && self.read_operator(),
+            None => {
+                if negative && maybe_base.is_none() && self.read_operator() {
+                    true
+                } else {
+                    self.reader
+                        .rollback(self.reader.pos() - self.reader.marked());
+                    false
+                }
+            },
         }
     }
 
@@ -311,27 +348,27 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
         self.reader.expect("~")
     }
 
-    fn read_base(&mut self) -> Option<u8> {
+    fn read_base(&mut self) -> Option<Base> {
         if self.reader.expect("0x") {
-            Some(16)
+            Some(Base::B16)
         } else if self.reader.expect("0o") {
-            Some(8)
+            Some(Base::B8)
         } else if self.reader.expect("0b") {
-            Some(2)
+            Some(Base::B2)
         } else {
             None
         }
     }
 
-    fn read_digit(&mut self, base: u8) -> Option<u8> {
+    fn read_digit(&mut self, base: Base) -> Option<u8> {
         let mut iter = self.reader.curr()?.chars();
         let first = iter.next()?.to_lowercase().next()?;
         let ret = if iter.next().is_some() {
             None
         } else if first >= '0' && first <= '9' {
-            Some(first as u8 - b'0').filter(|&digit| digit < base)
+            Some(first as u8 - b'0').filter(|&digit| digit < base.digits)
         } else if first >= 'a' && first <= 'z' {
-            Some(first as u8 - b'a').filter(|&digit| digit < base)
+            Some(10 + first as u8 - b'a').filter(|&digit| digit < base.digits)
         } else {
             None
         };
@@ -342,13 +379,13 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
         ret
     }
 
-    fn read_int_part(&mut self, negative: bool, base: u8) -> Option<BigInt> {
+    fn read_int_part(&mut self, negative: bool, base: Base) -> Option<BigInt> {
         let mut int = BigInt::zero();
         let mut read_smth = false;
         loop {
             match self.read_digit(base) {
                 Some(digit) => {
-                    int *= base;
+                    int *= base.digits;
                     int += digit;
                     read_smth = true;
                 },
@@ -375,14 +412,28 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
         true
     }
 
-    fn read_float(&mut self, base: u8, int_part: BigInt) -> bool {
-        self.reader.next();
-
+    fn read_float(&mut self, base: Base, int_part: BigInt) -> bool {
         let mut ratio = BigRational::from(int_part);
-        let mut place = BigRational::new(BigInt::one(), BigInt::from(2));
         let mut read_smth = false;
 
-        unimplemented!();
+        if self.reader.curr() == Some(".") {
+            self.reader.next();
+            read_smth |= self.read_float_places(base, &mut ratio);
+        }
+
+        if self.reader.curr() == Some(base.exp_del) {
+            self.reader.next();
+            let read_exp = self.read_float_exponent(base, &mut ratio);
+            read_smth |= read_exp;
+            if read_smth && !read_exp {
+                self.err_emitter
+                    .emit(EmptyExponent { span: self.reader.span() })
+            }
+        }
+
+        if !read_smth {
+            self.err_emitter.emit(EmptyFrac { span: self.reader.span() })
+        }
 
         if self.is_ident_start() {
             self.err_emitter.emit(AmbiguousToken { span: self.reader.span() });
@@ -392,5 +443,68 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
             kind: TokenKind::FloatLiteral(ratio),
         });
         true
+    }
+
+    fn read_float_places(
+        &mut self,
+        base: Base,
+        ratio: &mut BigRational,
+    ) -> bool {
+        let mut read_smth = false;
+        let big_base = BigInt::from(base.digits);
+        let mut place = big_base.clone();
+        loop {
+            match self.read_digit(base) {
+                Some(digit) => {
+                    let big_digit = BigInt::from(if ratio.is_negative() {
+                        -(digit as i8)
+                    } else {
+                        digit as i8
+                    });
+
+                    *ratio += BigRational::new(big_digit, place.clone());
+                    read_smth = true;
+                    place *= &big_base;
+                },
+                None if self.reader.curr() == Some("_") => {
+                    self.reader.next();
+                    read_smth = true;
+                },
+                None => break,
+            }
+        }
+        read_smth
+    }
+
+    fn read_float_exponent(
+        &mut self,
+        base: Base,
+        ratio: &mut BigRational,
+    ) -> bool {
+        let prev_mark = self.reader.marked();
+        self.reader.mark();
+        let negative = self.read_negative();
+        if let Some(exp) = self.read_int_part(negative, base) {
+            match exp.to_i32() {
+                Some(actual_exp) if actual_exp < base.min_exp => self
+                    .err_emitter
+                    .emit(ExponentTooSmall { span: self.reader.span() }),
+                Some(actual_exp) if actual_exp <= base.max_exp => {
+                    let base_ratio =
+                        BigRational::from(BigInt::from(base.digits));
+                    *ratio *= base_ratio.pow(actual_exp);
+                },
+                _ => self
+                    .err_emitter
+                    .emit(ExponentTooBig { span: self.reader.span() }),
+            }
+            let count = self.reader.pos() - prev_mark;
+            self.reader.rollback(count);
+            self.reader.mark();
+            self.reader.advance(count);
+            true
+        } else {
+            false
+        }
     }
 }
