@@ -29,7 +29,7 @@ fn read_operator() {
 #[test]
 fn read_ident() {
     let mut err_emitter = Emitter::new();
-    let src = Src::new("test.cst", "a bc cd_Ef");
+    let src = Src::new("test.cst", "a bc\ncd_Ef");
     let mut lexer = Lexer::new(src, &mut err_emitter);
     assert_eq!(lexer.curr().kind, TokenKind::Ident);
     assert_eq!(lexer.curr().span.as_str(), "a");
@@ -49,7 +49,7 @@ fn read_ident() {
 #[test]
 fn read_punctuation() {
     let mut err_emitter = Emitter::new();
-    let src = Src::new("test.cst", ",() , ( )");
+    let src = Src::new("test.cst", ",() ,\n  ( )");
     let mut lexer = Lexer::new(src, &mut err_emitter);
     assert_eq!(lexer.curr().kind, TokenKind::Comma);
     assert_eq!(lexer.curr().span.as_str(), ",");
@@ -223,7 +223,7 @@ fn read_numbers() {
 #[test]
 fn errors() {
     let mut err_emitter = Emitter::new();
-    let src = Src::new("test.cst", "25z … 25e5000 0o25e~50000");
+    let src = Src::new("test.cst", "25z … 25e5000 \n\n 0o25e~50000");
     let mut lexer = Lexer::new(src, &mut err_emitter);
 
     assert_eq!(lexer.curr().kind, TokenKind::IntLiteral(BigInt::from(25)));

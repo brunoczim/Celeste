@@ -35,10 +35,10 @@ impl Location {
     /// Finds the line and column (respectively) of this location in the source
     /// code.
     pub fn line_column(&self) -> (usize, usize) {
-        match self.src.inner.newlines.binary_search(&self.pos) {
+        match self.src.inner.newlines.binary_search(self.pos) {
             Ok(0) | Err(0) => (1, self.pos + 1),
             Ok(n) | Err(n) => {
-                (n + 1, self.pos - self.src.inner.newlines[n - 1] + 1)
+                (n + 1, self.pos - self.src.inner.newlines.index(n - 1) + 1)
             },
         }
     }

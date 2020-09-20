@@ -1,27 +1,22 @@
 //! This crate provides utilities to handle the source code.
 
+mod indexing;
 mod loc;
 mod reader;
 mod span;
 
 pub use self::{
+    indexing::SrcIndex,
     loc::Location,
     reader::Reader,
     span::{Span, SpanContent},
 };
+use indexing::{IndexArray, IndexArrayBuilder, IndexArrayIter};
 use std::{
     cmp::Ordering,
     fmt,
     hash::{Hash, Hasher},
-    ops::{
-        Index,
-        Range,
-        RangeFrom,
-        RangeFull,
-        RangeInclusive,
-        RangeTo,
-        RangeToInclusive,
-    },
+    ops::Index,
     rc::Rc,
 };
 use unicode_segmentation::UnicodeSegmentation;
@@ -32,11 +27,11 @@ struct SrcInner {
     /// File name.
     name: Box<str>,
     /// Contents of the source.
-    content: Box<str>,
+    contents: Box<str>,
     /// List of string segmentation in the source.
-    segments: Box<[usize]>,
+    segments: IndexArray,
     /// List of newlines in the source.
-    newlines: Box<[usize]>,
+    newlines: IndexArray,
 }
 
 /// A source code object, such as read from a file.
@@ -47,28 +42,28 @@ pub struct Src {
 }
 
 impl Src {
-    /// Creates a new source code object given its name and its contents.
-    pub fn new<S0, S1>(name: S0, content: S1) -> Self
+    /// Creates a new source code object given its name and its contentss.
+    pub fn new<S0, S1>(name: S0, contents: S1) -> Self
     where
         S0: Into<Box<str>>,
         S1: Into<Box<str>>,
     {
         let name = name.into();
-        let content = content.into();
-        let mut segments = Vec::new();
-        let mut newlines = Vec::new();
+        let contents = contents.into();
+        let mut segments = IndexArrayBuilder::new();
+        let mut newlines = IndexArrayBuilder::new();
 
-        for (idx, grapheme) in content.grapheme_indices(true) {
+        for (idx, grapheme) in contents.grapheme_indices(true) {
             if grapheme == "\n" {
                 newlines.push(segments.len());
             }
             segments.push(idx);
         }
-        segments.push(content.len());
+        segments.push(contents.len());
 
         let segments = segments.into();
         let newlines = newlines.into();
-        let inner = SrcInner { name, content, segments, newlines };
+        let inner = SrcInner { name, contents, segments, newlines };
         Self { inner: Rc::new(inner) }
     }
 
@@ -82,14 +77,14 @@ impl Src {
         self.inner.segments.len() - 1
     }
 
-    /// The contents of the source.
-    pub fn content(&self) -> &str {
-        &self.inner.content
+    /// The contentss of the source.
+    pub fn contents(&self) -> &str {
+        &self.inner.contents
     }
 
-    /// The segments of the source.
-    pub fn segments(&self) -> &[usize] {
-        &self.inner.segments
+    /// Iterator over the segments of the source.
+    pub fn segments(&self) -> SegmentsIter {
+        SegmentsIter { inner: self.inner.segments.iter() }
     }
 
     /// Indexes this source. It can be a single `usize` or a range of `usize`.
@@ -152,82 +147,30 @@ impl fmt::Display for Src {
     }
 }
 
-/// An index on a source code.
-pub trait SrcIndex: fmt::Debug {
-    /// Output of the indexing operation.
-    type Output: ?Sized;
+/// Iterator over the segments of a source. Double-ended and sized.
+#[derive(Debug)]
+pub struct SegmentsIter<'src> {
+    /// The inner iterator over the indices.
+    inner: IndexArrayIter<'src>,
+}
 
-    /// Indexes the source code and returns `None` if out of bounds.
-    fn get<'src>(&self, src: &'src Src) -> Option<&'src Self::Output>;
+impl<'src> Iterator for SegmentsIter<'src> {
+    type Item = usize;
 
-    /// Indexes the source code and panics if out of bounds.
-    fn index<'src>(&self, src: &'src Src) -> &'src Self::Output {
-        match self.get(src) {
-            Some(out) => out,
-            None => panic!(
-                "Index {:?} is not valid when accessing source {} of length {}",
-                self,
-                src.name(),
-                src.len()
-            ),
-        }
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.inner.len();
+        (len, Some(len))
     }
 }
 
-impl SrcIndex for usize {
-    type Output = str;
-
-    fn get<'src>(&self, src: &'src Src) -> Option<&'src Self::Output> {
-        (*self .. self.checked_add(1)?).get(src)
+impl<'src> DoubleEndedIterator for SegmentsIter<'src> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.inner.next_back()
     }
 }
 
-impl SrcIndex for Range<usize> {
-    type Output = str;
-
-    fn get<'src>(&self, src: &'src Src) -> Option<&'src Self::Output> {
-        let start = *src.segments().get(self.start)?;
-        let end = *src.segments().get(self.end)?;
-        src.content().get(start .. end)
-    }
-}
-
-impl SrcIndex for RangeTo<usize> {
-    type Output = str;
-
-    fn get<'src>(&self, src: &'src Src) -> Option<&'src Self::Output> {
-        (0 .. self.end).get(src)
-    }
-}
-
-impl SrcIndex for RangeFrom<usize> {
-    type Output = str;
-
-    fn get<'src>(&self, src: &'src Src) -> Option<&'src Self::Output> {
-        (self.start .. src.len()).get(src)
-    }
-}
-
-impl SrcIndex for RangeInclusive<usize> {
-    type Output = str;
-
-    fn get<'src>(&self, src: &'src Src) -> Option<&'src Self::Output> {
-        (*self.start() .. self.end().checked_add(1)?).get(src)
-    }
-}
-
-impl SrcIndex for RangeToInclusive<usize> {
-    type Output = str;
-
-    fn get<'src>(&self, src: &'src Src) -> Option<&'src Self::Output> {
-        (0 .. self.end.checked_add(1)?).get(src)
-    }
-}
-
-impl SrcIndex for RangeFull {
-    type Output = str;
-
-    fn get<'src>(&self, src: &'src Src) -> Option<&'src Self::Output> {
-        Some(src.content())
-    }
-}
+impl<'array> ExactSizeIterator for SegmentsIter<'array> {}
