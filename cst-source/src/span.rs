@@ -1,3 +1,5 @@
+//! This module provides ways of tracking ranges (spans) in the source code.
+
 use super::{Location, Src};
 use std::{
     borrow::Borrow,
@@ -7,38 +9,52 @@ use std::{
     ops::Deref,
 };
 
+/// A span (a range) in the source code.
+///
+/// See [`Reader::mark`](crate::reader::Reader::mark) and
+/// [`Reader::span`](crate::reader::Reader::span) to create a span.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Span {
+    /// Start of the span.
     loc: Location,
+    /// Length of the span in string segments.
     len: usize,
 }
 
 impl Span {
+    /// Creates a new span given the start location and length.
     pub(super) fn new(loc: Location, len: usize) -> Self {
         Self { loc, len }
     }
 
+    /// The start location of this span.
     pub fn start(&self) -> Location {
         self.loc.clone()
     }
 
+    /// The end location of this span.
     pub fn end(&self) -> Location {
         Location::new(self.src().clone(), self.loc.pos() + self.len)
     }
 
+    /// The length of this span in string segments.
     pub fn len(&self) -> usize {
         self.len
     }
 
+    /// The source code object this span refers to.
     pub fn src(&self) -> &Src {
         self.loc.src()
     }
 
+    /// Gets the string this span includes as a whole.
     pub fn as_str(&self) -> &str {
         let start = self.loc.pos();
         self.src().get(start .. start + self.len()).unwrap()
     }
 
+    /// Creates a type that, when displayed, shows the span contents, rather
+    /// than location.
     pub fn content(&self) -> SpanContent {
         SpanContent { span: self.clone() }
     }
@@ -82,12 +98,15 @@ where
     }
 }
 
+/// A type that, when displayed, shows the span contents, rather than location.
 #[derive(Clone, Debug)]
 pub struct SpanContent {
+    /// The inner span of a source code.
     span: Span,
 }
 
 impl SpanContent {
+    /// Returns the inner span.
     pub fn span(&self) -> &Span {
         &self.span
     }

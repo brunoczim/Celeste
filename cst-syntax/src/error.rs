@@ -1,9 +1,13 @@
+//! This module provides syntax errors.
+
 use cst_error::Diagnostic;
 use cst_source::Span;
 use std::{error::Error, fmt};
 
+/// An error shown when a bad character was found.
 #[derive(Debug, Clone)]
 pub struct BadChar {
+    /// The [`Span`](cst_source::Span) of the error.
     pub span: Span,
 }
 
@@ -25,8 +29,10 @@ impl Diagnostic for BadChar {
     }
 }
 
+/// An error shown when a potential ambiguity in lexing occurs.
 #[derive(Debug, Clone)]
 pub struct AmbiguousToken {
+    /// The [`Span`](cst_source::Span) of the error.
     pub span: Span,
 }
 
@@ -48,6 +54,7 @@ impl Diagnostic for AmbiguousToken {
     }
 }
 
+/// An error shown when a exponent that is too big is found.
 #[derive(Debug, Clone)]
 pub struct ExponentTooBig {
     pub span: Span,
@@ -71,8 +78,11 @@ impl Diagnostic for ExponentTooBig {
     }
 }
 
+///
+/// An error shown when a exponent that is too small is found.
 #[derive(Debug, Clone)]
 pub struct ExponentTooSmall {
+    /// The [`Span`](cst_source::Span) of the error.
     pub span: Span,
 }
 
@@ -117,8 +127,10 @@ impl Diagnostic for EmptyExponent {
     }
 }
 
+/// An error shown when a floating point's fractional part is empty.
 #[derive(Debug, Clone)]
 pub struct EmptyFrac {
+    /// The [`Span`](cst_source::Span) of the error.
     pub span: Span,
 }
 
