@@ -121,20 +121,20 @@ impl IndexArray {
 
     /// Gets an index stored in the array given this meta-index, returning
     /// `None` if out of bounds.
-    pub fn get(&self, mut index: usize) -> Option<usize> {
-        if let Some(&i) = self.as_u8.get(index) {
+    pub fn get(&self, mut meta_index: usize) -> Option<usize> {
+        if let Some(&i) = self.as_u8.get(meta_index) {
             return Some(i as usize);
         }
-        index -= self.as_u8.len();
-        if let Some(&i) = self.as_u16.get(index) {
+        meta_index -= self.as_u8.len();
+        if let Some(&i) = self.as_u16.get(meta_index) {
             return Some(i as usize);
         }
-        index -= self.as_u16.len();
-        if let Some(&i) = self.as_u32.get(index) {
+        meta_index -= self.as_u16.len();
+        if let Some(&i) = self.as_u32.get(meta_index) {
             return Some(i as usize);
         }
-        index -= self.as_u32.len();
-        self.as_u64.get(index).map(|&i| i as usize)
+        meta_index -= self.as_u32.len();
+        self.as_u64.get(meta_index).map(|&i| i as usize)
     }
 
     /// Performs a binary search on this index array. `Ok` means it was found,
