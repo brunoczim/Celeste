@@ -1,29 +1,44 @@
 use cst_fmt::SeqFmt;
 use cst_source::Span;
+use num::{BigInt, BigRational};
 use std::fmt::{self, Write};
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum TokenKind {
     Ident,
+    Operator,
     Comma,
     OpenParen,
     CloseParen,
     Eof,
+    ThinArrow,
+    FatArrow,
+    Equals,
+    If,
+    IntLiteral(BigInt),
+    FloatLiteral(BigRational),
 }
 
 impl fmt::Display for TokenKind {
-    fn fmt(&self, fmtr: &mut fmt::Formatter) -> fmt::Result {
-        fmtr.write_str(match self {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str(match self {
             TokenKind::Ident => "identifier",
+            TokenKind::Operator => "oerator",
             TokenKind::Comma => "comma",
             TokenKind::OpenParen => "opening parenthesis",
             TokenKind::CloseParen => "closing parenthesis",
             TokenKind::Eof => "end of input",
+            TokenKind::ThinArrow => "thin arrow",
+            TokenKind::FatArrow => "fat arrow",
+            TokenKind::Equals => "equals",
+            TokenKind::If => "if",
+            TokenKind::IntLiteral(_) => "integer literal",
+            TokenKind::FloatLiteral(_) => "float literal",
         })
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,

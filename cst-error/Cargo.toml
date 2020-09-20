@@ -8,4 +8,4 @@ edition = "2018"
 
 [dependencies]
 crossterm = "0.17.7"
-cst-span = { path = "../cst-span" }
+cst-source = { path = "../cst-source" }

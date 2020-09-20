@@ -1,9 +1,13 @@
+#[cfg(test)]
+mod test;
+
 use crate::{
-    error::BadChar,
+    error::{AmbiguousToken, BadChar},
     token::{Token, TokenKind},
 };
 use cst_error::Emitter;
 use cst_source::{Reader, Src};
+use num::{BigInt, BigRational, One, Zero};
 
 #[derive(Debug)]
 pub struct Lexer<'emitter, 'diagnostics> {
@@ -29,7 +33,7 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
     }
 
     pub fn is_eof(&self) -> bool {
-        self.reader.is_eof()
+        self.tokens.last().map_or(false, |tok| tok.kind == TokenKind::Eof)
     }
 
     pub fn pos(&self) -> usize {
@@ -38,6 +42,10 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
 
     pub fn src(&self) -> &Src {
         self.reader.src()
+    }
+
+    pub fn curr(&self) -> &Token {
+        &self.tokens[self.pos]
     }
 
     pub fn next(&mut self) -> bool {
@@ -78,7 +86,8 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
     fn try_read_next(&mut self) -> bool {
         self.read_discardable();
         let read = self.read_eof()
-            || self.read_ident()
+            || self.read_ident_like()
+            || self.read_operator_like()
             || self.read_open_paren()
             || self.read_close_paren()
             || self.read_comma();
@@ -157,7 +166,7 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
     }
 
     fn read_eof(&mut self) -> bool {
-        if self.is_eof() {
+        if self.reader.is_eof() {
             self.reader.mark();
             self.tokens
                 .push(Token { kind: TokenKind::Eof, span: self.reader.span() });
@@ -167,26 +176,15 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
         }
     }
 
-    fn read_ident(&mut self) -> bool {
+    fn read_ident_like(&mut self) -> bool {
         self.reader.mark();
-        if self.read_ident_start() {
-            true
-        } else {
-            false
-        }
-    }
-
-    fn read_ident_start(&mut self) -> bool {
         if self.is_ident_start() {
+            self.reader.mark();
             self.reader.next();
             while self.is_ident_part() {
                 self.reader.next();
             }
-            self.tokens.push(Token {
-                kind: TokenKind::Ident,
-                span: self.reader.span(),
-            });
-            true
+            self.read_if() || self.read_ident()
         } else {
             false
         }
@@ -205,45 +203,194 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
                 .reader
                 .curr()
                 .and_then(|s| s.chars().next())
-                .map_or(false, |ch| ch.is_numeric() || ch == '-')
+                .map_or(false, char::is_numeric)
+    }
+
+    fn read_ident(&mut self) -> bool {
+        self.tokens
+            .push(Token { span: self.reader.span(), kind: TokenKind::Ident });
+        true
+    }
+
+    fn read_if(&mut self) -> bool {
+        self.read_keyword("if", TokenKind::If)
+    }
+
+    fn read_operator_like(&mut self) -> bool {
+        self.reader.mark();
+        while self.is_operator() {
+            self.reader.next();
+        }
+        if self.reader.pos() != self.reader.marked() {
+            self.read_thin_arrow()
+                || self.read_fat_arrow()
+                || self.read_equals()
+                || self.read_operator()
+        } else {
+            false
+        }
+    }
+
+    fn is_operator(&mut self) -> bool {
+        self.reader.curr().map_or(false, |curr| match curr {
+            "+" | "-" | "*" | "/" | "%" | ";" | "&" | "|" | "^" | "~" | "$"
+            | "<" | ">" | "!" | "=" | "?" | ":" | "@" => true,
+            _ => false,
+        })
+    }
+
+    fn read_operator(&mut self) -> bool {
+        self.tokens.push(Token {
+            span: self.reader.span(),
+            kind: TokenKind::Operator,
+        });
+        true
+    }
+
+    fn read_keyword(&mut self, contents: &str, kind: TokenKind) -> bool {
+        if self.reader.span().as_str() == contents {
+            self.tokens.push(Token { span: self.reader.span(), kind });
+            true
+        } else {
+            false
+        }
+    }
+
+    fn read_thin_arrow(&mut self) -> bool {
+        self.read_keyword("->", TokenKind::ThinArrow)
+    }
+
+    fn read_fat_arrow(&mut self) -> bool {
+        self.read_keyword("=>", TokenKind::FatArrow)
+    }
+
+    fn read_equals(&mut self) -> bool {
+        self.read_keyword("=", TokenKind::Equals)
+    }
+
+    fn read_punctuation(&mut self, string: &str, kind: TokenKind) -> bool {
+        self.reader.mark();
+        if self.reader.expect(string) {
+            self.tokens.push(Token { kind, span: self.reader.span() });
+            true
+        } else {
+            false
+        }
     }
 
     fn read_open_paren(&mut self) -> bool {
-        self.reader.mark();
-        if self.reader.expect("(") {
-            self.tokens.push(Token {
-                kind: TokenKind::OpenParen,
-                span: self.reader.span(),
-            });
-            true
-        } else {
-            false
-        }
+        self.read_punctuation("(", TokenKind::OpenParen)
     }
 
     fn read_close_paren(&mut self) -> bool {
-        self.reader.mark();
-        if self.reader.expect(")") {
-            self.tokens.push(Token {
-                kind: TokenKind::CloseParen,
-                span: self.reader.span(),
-            });
-            true
-        } else {
-            false
-        }
+        self.read_punctuation(")", TokenKind::CloseParen)
     }
 
     fn read_comma(&mut self) -> bool {
+        self.read_punctuation(",", TokenKind::Comma)
+    }
+
+    fn read_number(&mut self) -> bool {
         self.reader.mark();
-        if self.reader.expect(",") {
-            self.tokens.push(Token {
-                kind: TokenKind::Comma,
-                span: self.reader.span(),
-            });
-            true
-        } else {
-            false
+        let negative = self.read_negative();
+        let maybe_base = self.read_base();
+        let base = maybe_base.unwrap_or(10);
+        match self.read_int_part(negative, base) {
+            Some(mut int) => {
+                if self.reader.curr() == Some(".") {
+                    self.read_float(base, int)
+                } else {
+                    self.read_int(int)
+                }
+            },
+            None => negative && maybe_base.is_none() && self.read_operator(),
         }
+    }
+
+    fn read_negative(&mut self) -> bool {
+        self.reader.expect("~")
+    }
+
+    fn read_base(&mut self) -> Option<u8> {
+        if self.reader.expect("0x") {
+            Some(16)
+        } else if self.reader.expect("0o") {
+            Some(8)
+        } else if self.reader.expect("0b") {
+            Some(2)
+        } else {
+            None
+        }
+    }
+
+    fn read_digit(&mut self, base: u8) -> Option<u8> {
+        let mut iter = self.reader.curr()?.chars();
+        let first = iter.next()?.to_lowercase().next()?;
+        let ret = if iter.next().is_some() {
+            None
+        } else if first >= '0' && first <= '9' {
+            Some(first as u8 - b'0').filter(|&digit| digit < base)
+        } else if first >= 'a' && first <= 'z' {
+            Some(first as u8 - b'a').filter(|&digit| digit < base)
+        } else {
+            None
+        };
+
+        if ret.is_some() {
+            self.reader.next();
+        }
+        ret
+    }
+
+    fn read_int_part(&mut self, negative: bool, base: u8) -> Option<BigInt> {
+        let mut int = BigInt::zero();
+        let mut read_smth = false;
+        loop {
+            match self.read_digit(base) {
+                Some(digit) => {
+                    int *= base;
+                    int += digit;
+                    read_smth = true;
+                },
+                None if read_smth && self.reader.curr() == Some("_") => {
+                    self.reader.next();
+                },
+                None => break,
+            }
+        }
+        if negative {
+            int = -int;
+        }
+        Some(int).filter(|_| read_smth)
+    }
+
+    fn read_int(&mut self, int: BigInt) -> bool {
+        if self.is_ident_start() {
+            self.err_emitter.emit(AmbiguousToken { span: self.reader.span() });
+        }
+        self.tokens.push(Token {
+            span: self.reader.span(),
+            kind: TokenKind::IntLiteral(int),
+        });
+        true
+    }
+
+    fn read_float(&mut self, base: u8, int_part: BigInt) -> bool {
+        self.reader.next();
+
+        let mut ratio = BigRational::from(int_part);
+        let mut place = BigRational::new(BigInt::one(), BigInt::from(2));
+        let mut read_smth = false;
+
+        unimplemented!();
+
+        if self.is_ident_start() {
+            self.err_emitter.emit(AmbiguousToken { span: self.reader.span() });
+        }
+        self.tokens.push(Token {
+            span: self.reader.span(),
+            kind: TokenKind::FloatLiteral(ratio),
+        });
+        true
     }
 }

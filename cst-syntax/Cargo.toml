@@ -10,3 +10,4 @@ edition = "2018"
 cst-fmt = { path = "../cst-fmt" }
 cst-source = { path = "../cst-source" }
 cst-error = { path = "../cst-error" }
+num = "0.3.0"
