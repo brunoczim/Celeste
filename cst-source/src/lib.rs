@@ -87,6 +87,11 @@ impl Src {
         SegmentsIter { inner: self.inner.segments.iter() }
     }
 
+    /// Iterator over the newlines of the source.
+    pub fn newlines(&self) -> NewlinesIter {
+        NewlinesIter { inner: self.inner.segments.iter() }
+    }
+
     /// Indexes this source. It can be a single `usize` or a range of `usize`.
     pub fn get<I>(&self, indexer: I) -> Option<&I::Output>
     where
@@ -174,3 +179,31 @@ impl<'src> DoubleEndedIterator for SegmentsIter<'src> {
 }
 
 impl<'array> ExactSizeIterator for SegmentsIter<'array> {}
+
+/// Iterator over the newlines of a source. Double-ended and sized.
+#[derive(Debug)]
+pub struct NewlinesIter<'src> {
+    /// The inner iterator over the indices.
+    inner: IndexArrayIter<'src>,
+}
+
+impl<'src> Iterator for NewlinesIter<'src> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.inner.len();
+        (len, Some(len))
+    }
+}
+
+impl<'src> DoubleEndedIterator for NewlinesIter<'src> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.inner.next_back()
+    }
+}
+
+impl<'array> ExactSizeIterator for NewlinesIter<'array> {}

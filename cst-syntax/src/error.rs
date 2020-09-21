@@ -46,7 +46,7 @@ impl Error for AmbiguousToken {}
 
 impl Diagnostic for AmbiguousToken {
     fn code(&self) -> &str {
-        "AMTOK"
+        "AMBTOK"
     }
 
     fn span(&self) -> Span {

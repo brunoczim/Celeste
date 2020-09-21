@@ -4,8 +4,9 @@ use crossterm::{
     style::{Color, SetForegroundColor},
     tty::IsTty,
 };
+use cst_fmt::{Ruler, SeqFmt};
 use cst_source::Span;
-use std::{error::Error, fmt, io, rc::Rc, slice};
+use std::{error::Error, fmt, fmt::Write, io, rc::Rc, slice};
 
 /// A possible error or a warning.
 pub trait Diagnostic: Error {
@@ -28,6 +29,25 @@ pub enum Level {
     Error,
     /// Just a warning.
     Warning,
+}
+
+impl Level {
+    /// Terminal color associated with this diagnostic level.
+    pub fn color(&self) -> Color {
+        match self {
+            Level::Error => Color::Red,
+            Level::Warning => Color::Yellow,
+        }
+    }
+}
+
+impl fmt::Display for Level {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str(match self {
+            Level::Error => "Error",
+            Level::Warning => "Warning",
+        })
+    }
 }
 
 /// Error emitter.
@@ -84,51 +104,49 @@ impl<'emitter, 'diagnostics> IntoIterator for &'emitter Emitter<'diagnostics> {
 
 impl fmt::Display for Emitter<'_> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        let mut seq = SeqFmt::new(fmt, "\n\n", "\n\n");
         let is_tty = io::stdout().is_tty();
-        let mut first = true;
 
         for diagnostic in self {
-            if first {
-                first = false;
-            } else {
-                write!(fmt, "\n\n")?;
-            }
+            let span = diagnostic.span();
 
-            if is_tty {
-                match diagnostic.level() {
-                    Level::Error => {
-                        write!(fmt, "{}", SetForegroundColor(Color::Red))?
-                    },
-                    Level::Warning => {
-                        write!(fmt, "{}", SetForegroundColor(Color::Yellow))?
-                    },
-                }
-            }
-            fmt.write_str(match diagnostic.level() {
-                Level::Error => "Error",
-                Level::Warning => "Warning",
+            seq.mark_elem_start()?;
+            write_with_color(
+                diagnostic.level().color(),
+                &mut seq,
+                is_tty,
+                |writer| write!(writer, "{}", diagnostic.level()),
+            )?;
+            write!(seq, " ({}) ", diagnostic.code(),)?;
+            write_with_color(Color::Blue, &mut seq, is_tty, |writer| {
+                write!(writer, "{}", diagnostic.span())
             })?;
-            if is_tty {
-                write!(fmt, "{}", SetForegroundColor(Color::Reset))?;
-            }
+            write!(seq, ":\n")?;
+            let mut ruler = Ruler::new(&mut seq, "  ");
 
-            write!(fmt, " ({}) {}:\n", diagnostic.code(), diagnostic.span())?;
-            let mut first = true;
-            for elem in diagnostic.to_string().split('\n') {
-                if first {
-                    first = false;
-                } else {
-                    write!(fmt, "\n")?;
-                }
+            write!(ruler, "{}\nContext:\n", diagnostic)?;
+            let lines = span.expand_lines();
+            let mut code_ruler = Ruler::new(&mut ruler, "| ");
 
-                if elem.trim().len() > 0 {
-                    write!(fmt, "    ")?;
-                }
-                write!(fmt, "{}", elem)?;
-            }
+            write!(
+                code_ruler,
+                "{}",
+                &span.src()[lines.start().pos() .. span.start().pos()]
+            )?;
+            write_with_color(
+                diagnostic.level().color(),
+                &mut code_ruler,
+                is_tty,
+                |writer| write!(writer, "{}", span.as_str()),
+            )?;
+            write!(
+                code_ruler,
+                "{}",
+                &span.src()[span.end().pos() .. lines.end().pos()].trim_end()
+            )?;
         }
 
-        Ok(())
+        seq.finish()
     }
 }
 
@@ -153,4 +171,25 @@ impl<'emitter, 'diagnostics> DoubleEndedIterator
     fn next_back(&mut self) -> Option<Self::Item> {
         self.inner.next_back().map(AsRef::as_ref)
     }
+}
+
+/// Writes with a color only if stdout is a terminal, reseting color after it.
+fn write_with_color<W, F>(
+    color: Color,
+    writer: &mut W,
+    is_tty: bool,
+    middle: F,
+) -> fmt::Result
+where
+    W: Write,
+    F: FnOnce(&mut W) -> fmt::Result,
+{
+    if is_tty {
+        write!(writer, "{}", SetForegroundColor(color))?
+    }
+    middle(writer)?;
+    if is_tty {
+        write!(writer, "{}", SetForegroundColor(Color::Reset))?;
+    }
+    Ok(())
 }

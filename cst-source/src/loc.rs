@@ -1,6 +1,6 @@
 //! This module provides means of tracking location in a source code.
 
-use super::Src;
+use crate::{Span, Src};
 use std::fmt;
 
 /// The location in a source code.
@@ -36,23 +36,38 @@ impl Location {
     /// code.
     pub fn line_column(&self) -> (usize, usize) {
         match self.src.inner.newlines.binary_search(self.pos) {
-            Ok(0) | Err(0) => (1, self.pos + 1),
+            Ok(0) | Err(0) => (0, self.pos),
             Ok(n) | Err(n) => {
-                (n + 1, self.pos - self.src.inner.newlines.index(n - 1) + 1)
+                (n, self.pos - self.src.inner.newlines.index(n - 1))
             },
         }
     }
 
     /// Finds the line of this location in the source code.
     pub fn line(&self) -> usize {
-        let (line, _) = self.line_column();
-        line
+        match self.src.inner.newlines.binary_search(self.pos) {
+            Ok(n) | Err(n) => n,
+        }
     }
 
     /// Finds the column of this location in the source code.
     pub fn column(&self) -> usize {
         let (_, column) = self.line_column();
         column
+    }
+
+    pub fn line_span(&self) -> Span {
+        let line = self.line();
+        let init = line
+            .checked_sub(1)
+            .map_or(0, |prev| self.src.inner.newlines.index(prev) + 1);
+        let end = self
+            .src
+            .inner
+            .newlines
+            .get(line + 1)
+            .map_or(self.src.len(), |next| next + 1);
+        Span::new(Self::new(self.src.clone(), init), end - init)
     }
 }
 
@@ -70,6 +85,6 @@ impl fmt::Debug for Location {
 impl fmt::Display for Location {
     fn fmt(&self, fmtr: &mut fmt::Formatter) -> fmt::Result {
         let (line, column) = self.line_column();
-        write!(fmtr, "in {} ({}, {})", self.src, line, column)
+        write!(fmtr, "in {} ({}, {})", self.src, line + 1, column + 1)
     }
 }

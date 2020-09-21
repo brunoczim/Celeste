@@ -58,6 +58,21 @@ impl Span {
     pub fn content(&self) -> SpanContent {
         SpanContent { span: self.clone() }
     }
+
+    pub fn expand_lines(&self) -> Span {
+        let start_line = self.start().line();
+        let end_line = self.end().line();
+        let init = start_line
+            .checked_sub(1)
+            .map_or(0, |prev| self.src().inner.newlines.index(prev) + 1);
+        let end = self
+            .src()
+            .inner
+            .newlines
+            .get(end_line + 1)
+            .map_or(self.src().len(), |next| next + 1);
+        Self::new(Location::new(self.src().clone(), init), end - init)
+    }
 }
 
 impl fmt::Debug for Span {
@@ -83,7 +98,11 @@ impl fmt::Display for Span {
         write!(
             fmtr,
             "in {} from ({}, {}) to ({}, {})",
-            file, line_start, col_start, line_end, col_end
+            file,
+            line_start + 1,
+            col_start + 1,
+            line_end + 1,
+            col_end + 1
         )
     }
 }
