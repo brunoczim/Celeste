@@ -56,6 +56,8 @@ impl Location {
         column
     }
 
+    /// Creates a [`Span`](crate::span::Span) containing the whole line this
+    /// location is in.
     pub fn line_span(&self) -> Span {
         let line = self.line();
         let init = line

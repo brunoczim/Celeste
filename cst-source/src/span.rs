@@ -59,6 +59,8 @@ impl Span {
         SpanContent { span: self.clone() }
     }
 
+    /// Expands this span in order to contain the whole lines the original span
+    /// contains.
     pub fn expand_lines(&self) -> Span {
         let start_line = self.start().line();
         let end_line = self.end().line();
