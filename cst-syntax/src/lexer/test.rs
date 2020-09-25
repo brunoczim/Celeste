@@ -1,26 +1,25 @@
-use crate::{lexer::Lexer, token::TokenKind};
+use crate::{lexer::Lexer, token::TokenData};
 use cst_error::Emitter;
 use cst_source::Src;
-use num::{BigInt, BigRational};
 
 #[test]
 fn read_operator() {
     let mut err_emitter = Emitter::new();
     let src = Src::new("test.cst", "+ $$ >>= -");
     let mut lexer = Lexer::new(src, &mut err_emitter);
-    assert_eq!(lexer.curr().kind, TokenKind::Operator);
+    assert_eq!(lexer.curr().data, TokenData::Operator);
     assert_eq!(lexer.curr().span.as_str(), "+");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::Operator);
+    assert_eq!(lexer.curr().data, TokenData::Operator);
     assert_eq!(lexer.curr().span.as_str(), "$$");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::Operator);
+    assert_eq!(lexer.curr().data, TokenData::Operator);
     assert_eq!(lexer.curr().span.as_str(), ">>=");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::Operator);
+    assert_eq!(lexer.curr().data, TokenData::Operator);
     assert_eq!(lexer.curr().span.as_str(), "-");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::Eof);
+    assert_eq!(lexer.curr().data, TokenData::Eof);
     assert_eq!(lexer.curr().span.as_str(), "");
     assert!(!lexer.next());
     assert!(!err_emitter.has_error());
@@ -31,16 +30,16 @@ fn read_ident() {
     let mut err_emitter = Emitter::new();
     let src = Src::new("test.cst", "a bc\ncd_Ef");
     let mut lexer = Lexer::new(src, &mut err_emitter);
-    assert_eq!(lexer.curr().kind, TokenKind::Ident);
+    assert_eq!(lexer.curr().data, TokenData::Ident);
     assert_eq!(lexer.curr().span.as_str(), "a");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::Ident);
+    assert_eq!(lexer.curr().data, TokenData::Ident);
     assert_eq!(lexer.curr().span.as_str(), "bc");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::Ident);
+    assert_eq!(lexer.curr().data, TokenData::Ident);
     assert_eq!(lexer.curr().span.as_str(), "cd_Ef");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::Eof);
+    assert_eq!(lexer.curr().data, TokenData::Eof);
     assert_eq!(lexer.curr().span.as_str(), "");
     assert!(!lexer.next());
     assert!(!err_emitter.has_error());
@@ -51,25 +50,25 @@ fn read_punctuation() {
     let mut err_emitter = Emitter::new();
     let src = Src::new("test.cst", ",() ,\n  ( )");
     let mut lexer = Lexer::new(src, &mut err_emitter);
-    assert_eq!(lexer.curr().kind, TokenKind::Comma);
+    assert_eq!(lexer.curr().data, TokenData::Comma);
     assert_eq!(lexer.curr().span.as_str(), ",");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::OpenParen);
+    assert_eq!(lexer.curr().data, TokenData::OpenParen);
     assert_eq!(lexer.curr().span.as_str(), "(");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::CloseParen);
+    assert_eq!(lexer.curr().data, TokenData::CloseParen);
     assert_eq!(lexer.curr().span.as_str(), ")");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::Comma);
+    assert_eq!(lexer.curr().data, TokenData::Comma);
     assert_eq!(lexer.curr().span.as_str(), ",");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::OpenParen);
+    assert_eq!(lexer.curr().data, TokenData::OpenParen);
     assert_eq!(lexer.curr().span.as_str(), "(");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::CloseParen);
+    assert_eq!(lexer.curr().data, TokenData::CloseParen);
     assert_eq!(lexer.curr().span.as_str(), ")");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::Eof);
+    assert_eq!(lexer.curr().data, TokenData::Eof);
     assert_eq!(lexer.curr().span.as_str(), "");
     assert!(!lexer.next());
     assert!(!err_emitter.has_error());
@@ -80,19 +79,19 @@ fn read_keywords() {
     let mut err_emitter = Emitter::new();
     let src = Src::new("test.cst", "if = => ->");
     let mut lexer = Lexer::new(src, &mut err_emitter);
-    assert_eq!(lexer.curr().kind, TokenKind::If);
+    assert_eq!(lexer.curr().data, TokenData::If);
     assert_eq!(lexer.curr().span.as_str(), "if");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::Equals);
+    assert_eq!(lexer.curr().data, TokenData::Equals);
     assert_eq!(lexer.curr().span.as_str(), "=");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::FatArrow);
+    assert_eq!(lexer.curr().data, TokenData::FatArrow);
     assert_eq!(lexer.curr().span.as_str(), "=>");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::ThinArrow);
+    assert_eq!(lexer.curr().data, TokenData::ThinArrow);
     assert_eq!(lexer.curr().span.as_str(), "->");
     assert!(lexer.next());
-    assert_eq!(lexer.curr().kind, TokenKind::Eof);
+    assert_eq!(lexer.curr().data, TokenData::Eof);
     assert_eq!(lexer.curr().span.as_str(), "");
     assert!(!lexer.next());
     assert!(!err_emitter.has_error());
@@ -108,113 +107,68 @@ fn read_numbers() {
     );
     let mut lexer = Lexer::new(src, &mut err_emitter);
 
-    assert_eq!(lexer.curr().kind, TokenKind::IntLiteral(BigInt::from(259)));
+    assert_eq!(lexer.curr().data, TokenData::int(259));
     assert_eq!(lexer.curr().span.as_str(), "259");
     assert!(lexer.next());
 
-    assert_eq!(lexer.curr().kind, TokenKind::IntLiteral(BigInt::from(240)));
+    assert_eq!(lexer.curr().data, TokenData::int(240));
     assert_eq!(lexer.curr().span.as_str(), "0xF0");
     assert!(lexer.next());
 
-    assert_eq!(lexer.curr().kind, TokenKind::IntLiteral(BigInt::from(-259)));
+    assert_eq!(lexer.curr().data, TokenData::int(-259));
     assert_eq!(lexer.curr().span.as_str(), "~259");
     assert!(lexer.next());
 
-    assert_eq!(lexer.curr().kind, TokenKind::IntLiteral(BigInt::from(-13)));
+    assert_eq!(lexer.curr().data, TokenData::int(-13));
     assert_eq!(lexer.curr().span.as_str(), "~0b11_01");
     assert!(lexer.next());
 
-    assert_eq!(
-        lexer.curr().kind,
-        TokenKind::FloatLiteral(BigRational::new(
-            BigInt::from(25925),
-            BigInt::from(100),
-        ))
-    );
+    assert_eq!(lexer.curr().data, TokenData::float(25925, 100));
     assert_eq!(lexer.curr().span.as_str(), "259.25");
     assert!(lexer.next());
 
-    assert_eq!(
-        lexer.curr().kind,
-        TokenKind::FloatLiteral(BigRational::new(
-            BigInt::from(0xF0C8),
-            BigInt::from(0x100),
-        ))
-    );
+    assert_eq!(lexer.curr().data, TokenData::float(0xF0C8, 0x100));
     assert_eq!(lexer.curr().span.as_str(), "0xF0.C8");
     assert!(lexer.next());
 
-    assert_eq!(
-        lexer.curr().kind,
-        TokenKind::FloatLiteral(BigRational::new(
-            BigInt::from(-25925),
-            BigInt::from(100),
-        ))
-    );
+    assert_eq!(lexer.curr().data, TokenData::float(-25925, 100));
     assert_eq!(lexer.curr().span.as_str(), "~259.25");
     assert!(lexer.next());
 
-    assert_eq!(
-        lexer.curr().kind,
-        TokenKind::FloatLiteral(BigRational::new(
-            BigInt::from(-0o2124),
-            BigInt::from(0o100),
-        ))
-    );
+    assert_eq!(lexer.curr().data, TokenData::float(-0o2124, 0o100));
     assert_eq!(lexer.curr().span.as_str(), "~0o21.24");
     assert!(lexer.next());
 
     assert_eq!(
-        lexer.curr().kind,
-        TokenKind::FloatLiteral(
-            BigRational::new(BigInt::from(25925), BigInt::from(100))
-                * BigInt::from(10).pow(23)
-        )
+        lexer.curr().data,
+        TokenData::float(25925 * 10i128.pow(23), 100)
     );
     assert_eq!(lexer.curr().span.as_str(), "259.25e23");
     assert!(lexer.next());
 
     assert_eq!(
-        lexer.curr().kind,
-        TokenKind::FloatLiteral(
-            BigRational::new(BigInt::from(0xF0C8), BigInt::from(0x100))
-                * BigInt::from(16).pow(0x1A)
-        )
+        lexer.curr().data,
+        TokenData::float(0xF0C8 * 16i128.pow(0x1A), 0x100)
     );
     assert_eq!(lexer.curr().span.as_str(), "0xF0.C8p1A");
     assert!(lexer.next());
 
     assert_eq!(
-        lexer.curr().kind,
-        TokenKind::FloatLiteral(
-            BigRational::new(BigInt::from(-25925), BigInt::from(100))
-                * BigInt::from(10).pow(23)
-        )
+        lexer.curr().data,
+        TokenData::float(-25925 * 10i128.pow(23), 100),
     );
     assert_eq!(lexer.curr().span.as_str(), "~259.25e23");
     assert!(lexer.next());
 
-    assert_eq!(
-        lexer.curr().kind,
-        TokenKind::FloatLiteral(
-            BigRational::new(BigInt::from(-0x17), BigInt::from(0x4))
-                * BigInt::from(2).pow(2)
-        )
-    );
+    assert_eq!(lexer.curr().data, TokenData::float(-0x17 * 2i128.pow(2), 0x4));
     assert_eq!(lexer.curr().span.as_str(), "~0b101.11e10");
     assert!(lexer.next());
 
-    assert_eq!(
-        lexer.curr().kind,
-        TokenKind::FloatLiteral(BigRational::new(
-            BigInt::from(259),
-            BigInt::from(100)
-        ))
-    );
+    assert_eq!(lexer.curr().data, TokenData::float(259, 100));
     assert_eq!(lexer.curr().span.as_str(), "259e~2");
     assert!(lexer.next());
 
-    assert_eq!(lexer.curr().kind, TokenKind::Eof);
+    assert_eq!(lexer.curr().data, TokenData::Eof);
     assert_eq!(lexer.curr().span.as_str(), "");
     assert!(!lexer.next());
     assert!(!err_emitter.has_error());
@@ -226,29 +180,23 @@ fn errors() {
     let src = Src::new("test.cst", "25z … 25e5000 \n\n 0o25e~50000");
     let mut lexer = Lexer::new(src, &mut err_emitter);
 
-    assert_eq!(lexer.curr().kind, TokenKind::IntLiteral(BigInt::from(25)));
+    assert_eq!(lexer.curr().data, TokenData::int(25));
     assert_eq!(lexer.curr().span.as_str(), "25");
     assert!(lexer.next());
 
-    assert_eq!(lexer.curr().kind, TokenKind::Ident);
+    assert_eq!(lexer.curr().data, TokenData::Ident);
     assert_eq!(lexer.curr().span.as_str(), "z");
     assert!(lexer.next());
 
-    assert_eq!(
-        lexer.curr().kind,
-        TokenKind::FloatLiteral(BigRational::from(BigInt::from(25)))
-    );
+    assert_eq!(lexer.curr().data, TokenData::float(25, 1),);
     assert_eq!(lexer.curr().span.as_str(), "25e5000");
     assert!(lexer.next());
 
-    assert_eq!(
-        lexer.curr().kind,
-        TokenKind::FloatLiteral(BigRational::from(BigInt::from(0o25)))
-    );
+    assert_eq!(lexer.curr().data, TokenData::float(0o25, 1),);
     assert_eq!(lexer.curr().span.as_str(), "0o25e~50000");
     assert!(lexer.next());
 
-    assert_eq!(lexer.curr().kind, TokenKind::Eof);
+    assert_eq!(lexer.curr().data, TokenData::Eof);
     assert_eq!(lexer.curr().span.as_str(), "");
     assert!(!lexer.next());
     assert!(err_emitter.has_error());

@@ -3,15 +3,16 @@ module Data.Bit where
 open import Data.Nat.Literal using (Number; ℕ-num; Fin-num)
 open import Data.Nat using (ℕ ; suc; zero; ⌊_/2⌋)
                      renaming (_*_ to ℕ*; _+_ to ℕ+; _≤_ to ℕ≤; _^_ to ℕ^)
+open import Data.Int.Literal using (Negative)
 open import Data.Fin using (Fin; suc; zero; raise)
                      renaming (toℕ to finToℕ; fromℕ to finFromℕ)
 open import Data.Product using (_×_; _,_; proj₁; proj₂)
-open import Data.Vec using (Vec; []; _∷_; _++_; replicate; insert)
+open import Data.Vec using (Vec; []; _∷_; _++_; replicate; insert; head; tail)
                      renaming (map to mapVec)
 open import Data.Unit using (⊤)
 open import Data.Empty using (⊥)
 open import Level using (_⊔_)
-open import Data.Bool using (Bool; false; true)
+open import Data.Bool using (Bool; false; true) renaming (_∧_ to Bool-∧)
 open import Data.Maybe using (Maybe; just; nothing; map)
 
 record WithCarry {a} {c} (A : Set a) (C : Set c) : Set (a ⊔ c) where
@@ -39,6 +40,7 @@ infixl 7 _<<_ _>>_
 infixl 6 _∧_ _&_
 infixl 5 _⊕_ _^_
 infixl 4 _∨_ _~|_
+infixl 3 _↔_ _==_
 infixl 1 _with-carry:_
 
 fromBool : Bool → Bit
@@ -66,6 +68,10 @@ _⊕_ : Bit → Bit → Bit
 b0 ⊕ q = q
 b1 ⊕ q = ! q
 
+_↔_ : Bit → Bit → Bit
+b0 ↔ q = ! q
+b1 ↔ q = q
+
 maj3 : Bit → Bit → Bit → Bit
 maj3 p q r = p ∧ q ∨ p ∧ r ∨ q ∧ r
 
@@ -86,7 +92,7 @@ full-addₙ (p ∷ []) (q ∷ []) r = result s ∷ [] with-carry: r ∷ carry s 
 full-addₙ (p ∷ ps) (q ∷ qs) r = result s ∷ result ss with-carry: carry ss  where
   s = full-add p q r
   ss = full-addₙ ps qs (carry s)
-
+  
 !ₙ : {n : ℕ} → Vec Bit n → Vec Bit n
 !ₙ = mapVec !
 
@@ -205,3 +211,30 @@ instance
     fromNat : (m : ℕ) → ℕ → Vec Bit m
     fromNat zero _ = []
     fromNat (suc m) n = ℕ-mod2 n ∷ fromNat m ⌊ n /2⌋
+
+instance
+  Bits-neg : {m : ℕ} → Negative (Vec Bit (suc m))
+  Bits-neg {m} .Negative.Constraint n = ℕ≤ n (ℕ^ 2 m)
+  Bits-neg {m} .Negative.fromNeg n  = number where
+    iterateBits : (m : ℕ) → ℕ → Vec Bit m × Bit
+    iterateBits zero _ = [] , b0 where
+    iterateBits (suc m) n = newVec , newSign where
+      subRes : Vec Bit m × Bit
+      subRes = iterateBits m ⌊ n /2⌋
+      newVec : Vec Bit (suc m)
+      newVec = ℕ-mod2 n ∷ proj₁ subRes
+      newSign : Bit
+      newSign = ℕ-mod2 n ∨ proj₂ subRes
+    iteration : Vec Bit (suc m) × Bit
+    iteration = iterateBits (suc m) n
+    preNumber : Vec Bit (suc m)
+    preNumber = proj₁ iteration
+    signBit : Bit
+    signBit = proj₂ iteration
+    number : Vec Bit (suc m)
+    number = (head preNumber ∨ signBit) ∷ tail preNumber
+
+_==_ : {n : ℕ} → Vec Bit n → Vec Bit n → Bool
+[] == [] = true
+p ∷ ps == q ∷ qs = Bool-∧ (toBool (p ↔ q)) (ps == qs)
+

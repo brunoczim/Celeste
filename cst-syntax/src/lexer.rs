@@ -9,12 +9,14 @@ use crate::{
         EmptyFrac,
         ExponentTooBig,
         ExponentTooSmall,
+        UnexpectedToken,
     },
-    token::{Token, TokenKind},
+    token::{Token, TokenData, TokenPattern},
 };
 use cst_error::Emitter;
 use cst_source::{Reader, Src};
 use num::{BigInt, BigRational, Signed, ToPrimitive, Zero};
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy)]
 struct Base {
@@ -58,8 +60,12 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
         this
     }
 
+    pub fn emitter(&mut self) -> &mut Emitter<'diagnostics> {
+        self.err_emitter
+    }
+
     pub fn is_eof(&self) -> bool {
-        self.tokens.last().map_or(false, |tok| tok.kind == TokenKind::Eof)
+        self.tokens.last().map_or(false, |tok| tok.data == TokenData::Eof)
     }
 
     pub fn pos(&self) -> usize {
@@ -103,6 +109,31 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
         let rolled = count.min(self.pos);
         self.pos -= rolled;
         rolled
+    }
+
+    pub fn check<P>(&mut self, pattern: P) -> bool
+    where
+        P: TokenPattern,
+    {
+        let token = self.curr();
+        pattern.test(token)
+    }
+
+    pub fn expect<P>(&mut self, pattern: P) -> Option<Token>
+    where
+        P: TokenPattern,
+    {
+        let token = self.curr().clone();
+        if pattern.test(&token) {
+            self.next();
+            Some(token)
+        } else {
+            self.err_emitter.emit(UnexpectedToken {
+                found: token,
+                expected: pattern.to_boxed_dyn(),
+            });
+            None
+        }
     }
 
     fn read_next(&mut self) {
@@ -196,7 +227,7 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
         if self.reader.is_eof() {
             self.reader.mark();
             self.tokens
-                .push(Token { kind: TokenKind::Eof, span: self.reader.span() });
+                .push(Token { data: TokenData::Eof, span: self.reader.span() });
             true
         } else {
             false
@@ -211,7 +242,7 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
             while self.is_ident_part() {
                 self.reader.next();
             }
-            self.read_if() || self.read_ident()
+            self.read_if() || self.read_val() || self.read_ident()
         } else {
             false
         }
@@ -235,12 +266,16 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
 
     fn read_ident(&mut self) -> bool {
         self.tokens
-            .push(Token { span: self.reader.span(), kind: TokenKind::Ident });
+            .push(Token { span: self.reader.span(), data: TokenData::Ident });
         true
     }
 
     fn read_if(&mut self) -> bool {
-        self.read_keyword("if", TokenKind::If)
+        self.read_keyword("if", TokenData::If)
+    }
+
+    fn read_val(&mut self) -> bool {
+        self.read_keyword("val", TokenData::Val)
     }
 
     fn read_operator_like(&mut self) -> bool {
@@ -269,14 +304,14 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
     fn read_operator(&mut self) -> bool {
         self.tokens.push(Token {
             span: self.reader.span(),
-            kind: TokenKind::Operator,
+            data: TokenData::Operator,
         });
         true
     }
 
-    fn read_keyword(&mut self, contents: &str, kind: TokenKind) -> bool {
+    fn read_keyword(&mut self, contents: &str, data: TokenData) -> bool {
         if self.reader.span().as_str() == contents {
-            self.tokens.push(Token { span: self.reader.span(), kind });
+            self.tokens.push(Token { span: self.reader.span(), data });
             true
         } else {
             false
@@ -284,21 +319,21 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
     }
 
     fn read_thin_arrow(&mut self) -> bool {
-        self.read_keyword("->", TokenKind::ThinArrow)
+        self.read_keyword("->", TokenData::ThinArrow)
     }
 
     fn read_fat_arrow(&mut self) -> bool {
-        self.read_keyword("=>", TokenKind::FatArrow)
+        self.read_keyword("=>", TokenData::FatArrow)
     }
 
     fn read_equals(&mut self) -> bool {
-        self.read_keyword("=", TokenKind::Equals)
+        self.read_keyword("=", TokenData::Equals)
     }
 
-    fn read_punctuation(&mut self, string: &str, kind: TokenKind) -> bool {
+    fn read_punctuation(&mut self, string: &str, data: TokenData) -> bool {
         self.reader.mark();
         if self.reader.expect(string) {
-            self.tokens.push(Token { kind, span: self.reader.span() });
+            self.tokens.push(Token { data, span: self.reader.span() });
             true
         } else {
             false
@@ -306,15 +341,15 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
     }
 
     fn read_open_paren(&mut self) -> bool {
-        self.read_punctuation("(", TokenKind::OpenParen)
+        self.read_punctuation("(", TokenData::OpenParen)
     }
 
     fn read_close_paren(&mut self) -> bool {
-        self.read_punctuation(")", TokenKind::CloseParen)
+        self.read_punctuation(")", TokenData::CloseParen)
     }
 
     fn read_comma(&mut self) -> bool {
-        self.read_punctuation(",", TokenKind::Comma)
+        self.read_punctuation(",", TokenData::Comma)
     }
 
     fn read_number(&mut self) -> bool {
@@ -407,7 +442,7 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
         }
         self.tokens.push(Token {
             span: self.reader.span(),
-            kind: TokenKind::IntLiteral(int),
+            data: TokenData::IntLiteral(Rc::new(int)),
         });
         true
     }
@@ -440,7 +475,7 @@ impl<'emitter, 'diagnostics> Lexer<'emitter, 'diagnostics> {
         }
         self.tokens.push(Token {
             span: self.reader.span(),
-            kind: TokenKind::FloatLiteral(ratio),
+            data: TokenData::FloatLiteral(Rc::new(ratio)),
         });
         true
     }

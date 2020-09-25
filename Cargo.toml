@@ -4,7 +4,7 @@ members = [
     "cst-intern",
     "cst-fmt",
     "cst-source",
-    "cst-syntax",
+    "cst-syntax"
 ]
 
 [package]

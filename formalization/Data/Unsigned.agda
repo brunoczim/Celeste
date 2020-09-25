@@ -63,7 +63,7 @@ rotr {n} (mk-uint ps) (mk-uint qs) = new-result with-carry: new-carry where
   shifted : WithCarry (Vec Bit n) (Vec Bit n)
   shifted with tryToFinₙ qs
   ...        | just i  = bit>> ps i
-  ...        | nothing = ps with-carry: replicate b0
+  ...        | nothing = replicate b0 with-carry: ps 
   new-result : Unsigned n
   new-result = mk-uint (result shifted)
   new-carry : Unsigned n
@@ -74,7 +74,7 @@ rotl {n} (mk-uint ps) (mk-uint qs) = new-result with-carry: new-carry where
   shifted : WithCarry (Vec Bit n) (Vec Bit n)
   shifted with tryToFinₙ qs
   ...        | just i  = bit<< ps i
-  ...        | nothing = ps with-carry: replicate b0
+  ...        | nothing = replicate b0 with-carry: ps
   new-result : Unsigned n
   new-result = mk-uint (result shifted)
   new-carry : Unsigned n

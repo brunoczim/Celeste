@@ -100,7 +100,6 @@ impl Reader {
         rolled
     }
 
-    #[deprecated]
     pub fn expect(&mut self, mut expected: &str) -> bool {
         let mut count = 0;
 

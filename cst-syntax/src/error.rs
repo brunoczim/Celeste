@@ -1,6 +1,8 @@
 //! This module provides syntax errors.
 
+use crate::token::{Token, TokenPattern};
 use cst_error::Diagnostic;
+use cst_fmt::SeqFmt;
 use cst_source::Span;
 use std::{error::Error, fmt};
 
@@ -149,5 +151,60 @@ impl Diagnostic for EmptyFrac {
 
     fn span(&self) -> Span {
         self.span.clone()
+    }
+}
+
+/// An error shown when an unexpected token is found.
+#[derive(Clone)]
+pub struct UnexpectedToken<P>
+where
+    P: TokenPattern,
+{
+    /// The token that was found in the source code.
+    pub found: Token,
+    /// The expected token pattern.
+    pub expected: P,
+}
+
+impl<P> fmt::Debug for UnexpectedToken<P>
+where
+    P: TokenPattern,
+{
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        let mut expected = String::new();
+        let mut seq_fmt = SeqFmt::with_disjunction(&mut expected);
+        self.expected.render(&mut seq_fmt)?;
+
+        fmt.debug_struct("UnexpectedToken")
+            .field("found", &self.found)
+            .field("expected", &expected)
+            .finish()
+    }
+}
+
+impl<P> fmt::Display for UnexpectedToken<P>
+where
+    P: TokenPattern,
+{
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "Unexpected token {}, expected ", &self.found)?;
+        let mut seq_fmt = SeqFmt::with_disjunction(fmt);
+        self.expected.render(&mut seq_fmt)?;
+        Ok(())
+    }
+}
+
+impl<P> Error for UnexpectedToken<P> where P: TokenPattern {}
+
+impl<P> Diagnostic for UnexpectedToken<P>
+where
+    P: TokenPattern,
+{
+    fn code(&self) -> &str {
+        "BADTOK"
+    }
+
+    fn span(&self) -> Span {
+        self.found.span.clone()
     }
 }
